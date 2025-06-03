@@ -1,19 +1,18 @@
+import React from 'react';
 import Sidebar from '../components/Sidebar';
 import ustpLogo from '../../assets/ustp-things-logo.png';
 import userAvatar from '../../assets/ustp thingS/Person.png';
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import homeLogo from "../../assets/ustp thingS/Home.png";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, where, getDocs, doc, setDoc, increment, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, where, getDocs, doc, setDoc, increment, getDoc, Timestamp } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import React from 'react';
 
 interface Message {
   id: string;
   senderId: string;
   receiverId: string;
   text: string;
-  timestamp: any;
+  timestamp: Timestamp;
   sender: string;
   status: 'sent' | 'delivered' | 'read';
   type: 'text' | 'image' | 'file';
@@ -25,19 +24,22 @@ interface ChatRoom {
   id: string;
   participants: string[];
   lastMessage: string;
-  lastMessageTime: any;
+  lastMessageTime: Timestamp;
   sellerName: string;
   sellerAvatar: string;
   isTyping?: boolean;
   unreadCount?: number;
+  sellerId: string;
+  customerId: string;
+  customerName?: string;
+  customerAvatar?: string;
 }
 
-// Dummy seller data
-const DUMMY_SELLER = {
-  id: 'seller123',
-  name: 'Galdo Boutique',
-  avatar: userAvatar
-};
+interface UserData {
+  displayName?: string;
+  username?: string;
+  photoURL?: string;
+}
 
 // Chat component for individual conversations
 function ChatWindow({ userId }: { userId: string }) {
@@ -48,13 +50,13 @@ function ChatWindow({ userId }: { userId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [otherUserName, setOtherUserName] = useState<string>('');
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
-  const typingTimeoutRef = React.useRef<NodeJS.Timeout>();
+  const typingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   // Debugging logs
   React.useEffect(() => {
     console.log('[ChatWindow] Current user UID:', auth.currentUser?.uid);
     console.log('[ChatWindow] userId from URL:', userId);
-  }, [userId, auth.currentUser]);
+  }, [userId]);
 
   // Fetch other user's username
   React.useEffect(() => {
@@ -67,19 +69,22 @@ function ChatWindow({ userId }: { userId: string }) {
         } else {
           setOtherUserName('Unknown User');
         }
-      } catch (err) {
+      } catch (error) {
+        console.error('Error fetching username:', error);
         setOtherUserName('Unknown User');
       }
     };
     fetchUsername();
   }, [userId]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (options: ScrollIntoViewOptions = { behavior: "smooth" }) => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView(options);
+    }
   };
 
   React.useEffect(() => {
-    scrollToBottom();
+    scrollToBottom({ behavior: "smooth" });
   }, [messages]);
 
   // Handle typing indicator
@@ -135,7 +140,7 @@ function ChatWindow({ userId }: { userId: string }) {
         console.log('[ChatWindow] Fetched messages:', fetchedMessages);
         setMessages(fetchedMessages);
         setLoading(false);
-        scrollToBottom();
+        scrollToBottom({ behavior: "smooth" });
 
         // Mark messages as read
         const unreadMessages = fetchedMessages.filter(
@@ -226,6 +231,16 @@ function ChatWindow({ userId }: { userId: string }) {
     } catch (error) {
       console.error('Error sending message:', error);
       setError('Failed to send message. Please try again.');
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (newMessage.trim()) {
+        const formEvent = new Event('submit') as unknown as React.FormEvent<HTMLFormElement>;
+        sendMessage(formEvent);
+      }
     }
   };
 
@@ -320,16 +335,9 @@ function ChatWindow({ userId }: { userId: string }) {
               setNewMessage(e.target.value);
               handleTyping();
             }}
+            onKeyPress={handleKeyPress}
             placeholder="Type a message..."
             className="flex-1 p-2 border rounded-lg focus:outline-none focus:border-[#F88379]"
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (newMessage.trim()) {
-                  sendMessage(e);
-                }
-              }
-            }}
           />
           <button
             type="submit"
@@ -361,38 +369,67 @@ export function MessagesContent() {
       setError(null);
 
       try {
-        if (!auth.currentUser) {
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
           console.log("No authenticated user found");
           setLoading(false);
           return;
         }
 
-        console.log("Fetching chat rooms for user:", auth.currentUser.uid);
+        console.log("Fetching chat rooms for user:", currentUser.uid);
 
         const chatRoomsRef = collection(db, 'chatRooms');
         const q = query(
           chatRoomsRef,
-          where('participants', 'array-contains', auth.currentUser.uid)
+          where('participants', 'array-contains', currentUser.uid)
         );
 
         // Set up real-time listener
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribe = onSnapshot(q, async (snapshot) => {
           const rooms: ChatRoom[] = [];
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            // Only include rooms where the current user is the customer
-            if (data.sellerId && data.sellerId !== auth.currentUser?.uid) {
-              rooms.push({
-                id: doc.id,
-                participants: data.participants || [],
-                lastMessage: data.lastMessage || "",
-                lastMessageTime: data.lastMessageTime,
-                sellerName: data.sellerName || "Unknown Seller",
-                sellerAvatar: data.sellerAvatar || userAvatar
-              } as ChatRoom);
-            }
+          
+          for (const docSnapshot of snapshot.docs) {
+            const data = docSnapshot.data();
+            const otherUserId = data.participants.find((id: string) => id !== currentUser.uid);
+            
+            if (!otherUserId) continue;
+
+            // Fetch the other user's information
+            const otherUserDoc = await getDoc(doc(db, 'users', otherUserId));
+            const otherUserData = otherUserDoc.data() as UserData | undefined;
+
+            const room = {
+              id: docSnapshot.id,
+              participants: data.participants || [],
+              lastMessage: data.lastMessage || "",
+              lastMessageTime: data.lastMessageTime,
+              sellerId: data.sellerId,
+              customerId: data.customerId,
+              sellerName: data.sellerId === currentUser.uid ? 
+                (currentUser.displayName || "You") : 
+                (otherUserData?.displayName || otherUserData?.username || "Unknown User"),
+              sellerAvatar: data.sellerId === currentUser.uid ? 
+                (currentUser.photoURL || userAvatar) : 
+                (otherUserData?.photoURL || userAvatar),
+              customerName: data.customerId === currentUser.uid ? 
+                (currentUser.displayName || "You") : 
+                (otherUserData?.displayName || otherUserData?.username || "Unknown User"),
+              customerAvatar: data.customerId === currentUser.uid ? 
+                (currentUser.photoURL || userAvatar) : 
+                (otherUserData?.photoURL || userAvatar),
+              unreadCount: data.unreadCount || 0
+            } as ChatRoom;
+
+            rooms.push(room);
+          }
+
+          // Sort rooms by last message time
+          rooms.sort((a, b) => {
+            const timeA = a.lastMessageTime?.toDate()?.getTime() || 0;
+            const timeB = b.lastMessageTime?.toDate()?.getTime() || 0;
+            return timeB - timeA;
           });
-          console.log("Updated chat rooms:", rooms);
+
           setChatRooms(rooms);
           setLoading(false);
         }, (error) => {
@@ -427,43 +464,65 @@ export function MessagesContent() {
   }
 
   return (
-    <div className="space-y-4 p-10">
-      {loading ? (
-        <div className="flex flex-col items-center justify-center space-y-4">
-          <div className="text-gray-500">Loading conversations...</div>
-        </div>
-      ) : chatRooms.length === 0 ? (
-        <div className="text-center">
-          <p className="text-gray-500 mb-4">No messages from sellers yet</p>
-        </div>
-      ) : (
-        chatRooms
-          .filter(room => room.participants.every(id => typeof id === 'string' && id.length >= 20 && !id.includes(' ')))
-          .map((room) => (
-            <div 
-              key={room.id} 
-              className="bg-white rounded-xl p-4 shadow cursor-pointer hover:shadow-md transition"
-              onClick={() => {
-                // Find the seller's ID
-                const sellerId = room.participants.find((id) => id !== auth.currentUser?.uid);
-                if (sellerId) navigate(`/dashboard/messages/${sellerId}`);
-              }}
-            >
-              <div className="flex items-center gap-4">
-                <img src={room.sellerAvatar} alt={room.sellerName} className="w-16 h-16 rounded-full object-cover" />
-                <div className="flex-1">
-                  <div className="flex justify-between items-start">
-                    <h3 className="text-lg font-semibold text-gray-800">{room.sellerName}</h3>
-                    <span className="text-sm text-gray-500">
-                      {room.lastMessageTime?.toDate()?.toLocaleString() || 'Just now'}
-                    </span>
+    <div className="p-10">
+      <div className="max-w-4xl mx-auto">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center space-y-4">
+            <div className="text-gray-500">Loading conversations...</div>
+          </div>
+        ) : chatRooms.length === 0 ? (
+          <div className="text-center">
+            <p className="text-gray-500 mb-4">No messages yet</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {chatRooms
+              .filter(room => room.participants.every(id => typeof id === 'string' && id.length >= 20 && !id.includes(' ')))
+              .map((room) => {
+                const isSeller = room.sellerId === auth.currentUser?.uid;
+                const otherUserName = isSeller ? room.customerName : room.sellerName;
+                const otherUserAvatar = isSeller ? room.customerAvatar : room.sellerAvatar;
+                const roleLabel = isSeller ? "Customer" : "Seller";
+
+                return (
+                  <div 
+                    key={room.id} 
+                    className="bg-white rounded-xl p-4 shadow cursor-pointer hover:shadow-md transition relative"
+                    onClick={() => {
+                      const otherUserId = room.participants.find((id) => id !== auth.currentUser?.uid);
+                      if (otherUserId) navigate(`/dashboard/messages/${otherUserId}`);
+                    }}
+                  >
+                    <div className="flex items-center gap-4">
+                      <img 
+                        src={otherUserAvatar} 
+                        alt={otherUserName} 
+                        className="w-16 h-16 rounded-full object-cover" 
+                      />
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-800">{otherUserName}</h3>
+                            <span className="text-sm text-[#F88379]">{roleLabel}</span>
+                          </div>
+                          <span className="text-sm text-gray-500">
+                            {room.lastMessageTime?.toDate()?.toLocaleString() || 'Just now'}
+                          </span>
+                        </div>
+                        <p className="text-gray-600 mt-1">{room.lastMessage}</p>
+                        {typeof room.unreadCount === 'number' && room.unreadCount > 0 && (
+                          <div className="absolute top-4 right-4 bg-[#F88379] text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">
+                            {room.unreadCount}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-gray-600 mt-1">{room.lastMessage}</p>
-                </div>
-              </div>
-            </div>
-          ))
-      )}
+                );
+              })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -507,7 +566,6 @@ function ChatPage() {
 
 // Main Messages page component
 export default function Messages() {
-  const [showModal, setShowModal] = useState(false);
   const navigate = useNavigate();
   const { userId } = useParams();
 
@@ -519,7 +577,6 @@ export default function Messages() {
     <div className="flex min-h-screen bg-[#f7f6fd]">
       <div className="w-[348px] flex-shrink-0">
         <Sidebar
-          onVerifyClick={() => setShowModal(true)}
           onHomeClick={() => navigate('/dashboard')}
           onLikesClick={() => navigate('/dashboard/likes')}
           onRecentlyClick={() => navigate('/dashboard/recently')}
@@ -538,81 +595,6 @@ export default function Messages() {
         </header>
         <MessagesContent />
       </main>
-    </div>
-  );
-}
-
-type BlockedUsersProps = {
-  onSettingsClick: () => void;
-};
-
-export function BlockedUsers({ onSettingsClick }: BlockedUsersProps) {
-  const navigate = useNavigate();
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#fff" }}>
-      {/* Header */}
-      <div
-        style={{
-          background: "#fff",
-          display: "flex",
-          alignItems: "center",
-          height: 72,
-          paddingLeft: 55,
-          paddingRight: 24,
-          gap: 18,
-          borderBottom: "1px solid #ccc",
-          boxShadow: "0 2px 4px 0 rgba(0,0,0,0.04)",
-        }}
-      >
-        <img
-          src={homeLogo}
-          alt="Home Icon"
-          className="h-7 w-auto"
-          style={{ cursor: "pointer" }}
-          onClick={() => navigate('/dashboard')}
-        />
-        <div
-          style={{
-            width: 2,
-            height: 36,
-            background: "#F48C8C",
-            marginLeft: 18,
-            marginRight: 18,
-          }}
-        />
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            className="text-3xl font-bold"
-            style={{ color: "#F88379", opacity: 0.63, cursor: "pointer" }}
-            onClick={onSettingsClick}
-          >
-            Settings
-          </span>
-          <span
-            className="text-3xl font-bold"
-            style={{ color: "#F88379", opacity: 0.63 }}
-          >
-            &gt;
-          </span>
-          <span className="text-3xl font-bold" style={{ color: "#F88379" }}>
-            Blocked Users
-          </span>
-        </div>
-      </div>
-      {/* Main content */}
-      <div style={{ paddingTop: 32, paddingLeft: 24, paddingRight: 24, display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <div style={{ marginTop: 60, textAlign: "center" }}>
-          <img
-            src={require("../../assets/ustp thingS/BlockedUsers.png")}
-            alt="Blocked Users"
-            style={{ width: 60, height: 60, margin: "0 auto", opacity: 0.5 }}
-          />
-          <div style={{ color: "#F88379", fontWeight: 600, marginTop: 8 }}>
-            No blocked user yet
-          </div>
-        </div>
-      </div>
     </div>
   );
 } 
