@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { auth } from '../../lib/firebase';
 import Sidebar from '../components/Sidebar';
 import ConfirmOrder from '../components/ConfirmOrder';
+import { calculateServiceFee, formatCurrency, formatPercentage } from '../../utils/serviceFees';
+import type { ServiceFeeCalculation } from '../../utils/serviceFees';
 
 interface CheckOutProps {
   product: {
@@ -24,6 +26,7 @@ export default function CheckOut({ product }: CheckOutProps) {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [quantity, setQuantity] = useState(1);
+  const [serviceFeeData, setServiceFeeData] = useState<ServiceFeeCalculation | null>(null);
 
   // Validate product data on mount
   useEffect(() => {
@@ -32,6 +35,23 @@ export default function CheckOut({ product }: CheckOutProps) {
       navigate(-1);
     }
   }, [product, navigate]);
+
+  // Calculate service fees when quantity changes
+  useEffect(() => {
+    const updateServiceFees = async () => {
+      if (!auth.currentUser?.uid) return;
+      
+      try {
+        const subtotal = calculateSubtotal();
+        const feeData = await calculateServiceFee(subtotal, auth.currentUser.uid);
+        setServiceFeeData(feeData);
+      } catch (error) {
+        console.error('Error calculating service fees:', error);
+      }
+    };
+
+    updateServiceFees();
+  }, [quantity, product.price]);
 
   const handleCancel = () => {
     navigate(-1);
@@ -45,10 +65,6 @@ export default function CheckOut({ product }: CheckOutProps) {
   const calculateSubtotal = () => {
     const basePrice = parseFloat(product.price.replace('₱', '').replace(',', ''));
     return basePrice * quantity;
-  };
-
-  const formatPrice = (amount: number) => {
-    return `₱${amount.toLocaleString()}`;
   };
 
   // Get available date slots from product
@@ -77,6 +93,8 @@ export default function CheckOut({ product }: CheckOutProps) {
   };
 
   const handleConfirmOrder = async () => {
+    if (loading) return; // Prevent multiple submissions
+    
     setLoading(true);
     try {
       const orderData = {
@@ -89,7 +107,11 @@ export default function CheckOut({ product }: CheckOutProps) {
         pickupTime: selectedTime,
         paymentMethod: selectedPaymentMethod,
         quantity,
-        totalAmount: calculateSubtotal(),
+        subtotal: calculateSubtotal(),
+        serviceFeeAmount: serviceFeeData?.serviceFeeAmount || 0,
+        serviceFeeRate: serviceFeeData?.serviceFeeRate || 0,
+        totalAmount: serviceFeeData?.totalAmount || calculateSubtotal(),
+        userType: serviceFeeData?.userType || 'unverified',
         productName: product.name,
         productImage: product.image,
       };
@@ -153,8 +175,22 @@ export default function CheckOut({ product }: CheckOutProps) {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Subtotal</span>
-                  <span className="font-semibold">{formatPrice(calculateSubtotal())}</span>
+                  <span className="font-semibold">{formatCurrency(calculateSubtotal())}</span>
                 </div>
+                {serviceFeeData && serviceFeeData.serviceFeeAmount > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">
+                      Service Fee ({formatPercentage(serviceFeeData.serviceFeeRate)})
+                    </span>
+                    <span className="font-semibold">{formatCurrency(serviceFeeData.serviceFeeAmount)}</span>
+                  </div>
+                )}
+                {serviceFeeData && (
+                  <div className="flex justify-between items-center border-t pt-2 mt-2">
+                    <span className="text-gray-900 font-semibold">Total</span>
+                    <span className="font-bold text-lg">{formatCurrency(serviceFeeData.totalAmount)}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

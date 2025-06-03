@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { checkPaymentStatus } from '../../lib/xenditPayment';
 import ustpLogo from '../../assets/ustp-things-logo.png';
 
@@ -10,9 +10,18 @@ export default function PaymentCallback() {
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(true);
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     const handlePaymentCallback = async () => {
+      // Prevent multiple simultaneous executions
+      if (processing) {
+        console.log('Payment callback already in progress, skipping...');
+        return;
+      }
+      
+      setProcessing(true);
+      
       try {
         // Get stored order data
         const storedOrderData = sessionStorage.getItem('pendingOrderData');
@@ -76,7 +85,34 @@ export default function PaymentCallback() {
         });
 
         if (isPaymentSuccessful) {
-          // Create the order in database
+          // Check if order with this externalID already exists to prevent duplicates
+          const existingOrderQuery = query(
+            collection(db, 'orders'),
+            where('externalID', '==', orderData.externalID)
+          );
+          const existingOrderSnapshot = await getDocs(existingOrderQuery);
+          
+          if (!existingOrderSnapshot.empty) {
+            console.log('Order already exists for externalID:', orderData.externalID);
+            
+            // Order already exists, redirect to success page with existing order data
+            const existingOrder = existingOrderSnapshot.docs[0].data();
+            
+            // Clear session storage
+            sessionStorage.removeItem('pendingOrderData');
+            
+            // Redirect to success page
+            navigate('/dashboard/payment/success', {
+              state: {
+                orderData: existingOrder,
+                paymentMethod: orderData.paymentMethod,
+                paymentId: paymentId
+              }
+            });
+            return;
+          }
+
+          // Create the order in database (only if it doesn't exist)
           const orderDoc = {
             userId: orderData.userId,
             sellerId: orderData.sellerId,
@@ -141,11 +177,13 @@ export default function PaymentCallback() {
             error: error instanceof Error ? error.message : 'Payment verification failed'
           }
         });
+      } finally {
+        setProcessing(false);
       }
     };
 
     handlePaymentCallback();
-  }, [navigate, searchParams]);
+  }, [navigate, searchParams, processing]);
 
   return (
     <div className="min-h-screen bg-[#f7f6fd] flex items-center justify-center">

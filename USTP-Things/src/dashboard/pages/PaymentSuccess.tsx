@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ustpLogo from '../../assets/ustp-things-logo.png';
+import { formatCurrency, formatPercentage } from '../../utils/serviceFees';
 
 export default function PaymentSuccess() {
   const navigate = useNavigate();
@@ -66,8 +67,20 @@ export default function PaymentSuccess() {
                 <span className="font-medium">{orderData.quantity}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Total Amount:</span>
-                <span className="font-medium">₱{orderData.totalAmount?.toLocaleString()}</span>
+                <span className="text-gray-600">Subtotal:</span>
+                <span className="font-medium">{formatCurrency(orderData.subtotal || orderData.totalAmount)}</span>
+              </div>
+              {orderData.serviceFeeAmount > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">
+                    Service Fee ({formatPercentage(orderData.serviceFeeRate)}):
+                  </span>
+                  <span className="font-medium">{formatCurrency(orderData.serviceFeeAmount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t pt-2 mt-2">
+                <span className="text-gray-600 font-semibold">Total Amount:</span>
+                <span className="font-bold">{formatCurrency(orderData.totalAmount)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Payment Method:</span>
