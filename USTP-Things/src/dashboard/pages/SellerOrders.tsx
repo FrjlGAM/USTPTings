@@ -99,6 +99,10 @@ export default function SellerOrders() {
             buyerEmail,
           } as Order);
         }
+        
+        // Sort orders by createdAt in descending order (most recent first)
+        ordersList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        
         setOrders(ordersList);
       } catch (error) {
         console.error('Error fetching seller orders:', error);
