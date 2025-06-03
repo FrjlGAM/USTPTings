@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { FirebaseError } from 'firebase/app';
+import { auth } from '../../lib/firebase';
 import Sidebar from '../components/Sidebar';
 import ConfirmOrder from '../components/ConfirmOrder';
 
@@ -17,18 +15,15 @@ interface CheckOutProps {
     paymentMethod?: string | string[];
     campusLocation?: string;
   };
-  onClose?: () => void;
 }
 
-export default function CheckOut({ product, onClose }: CheckOutProps) {
+export default function CheckOut({ product }: CheckOutProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [schoolLocation, setSchoolLocation] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [quantity, setQuantity] = useState(1);
-  const orderingDisabled = false; // or from props/config
 
   // Validate product data on mount
   useEffect(() => {
@@ -95,15 +90,18 @@ export default function CheckOut({ product, onClose }: CheckOutProps) {
         paymentMethod: selectedPaymentMethod,
         quantity,
         totalAmount: calculateSubtotal(),
-        createdAt: serverTimestamp(),
         productName: product.name,
         productImage: product.image,
       };
-      await addDoc(collection(db, 'orders'), orderData);
+      
       setShowConfirmModal(false);
-      navigate('/dashboard/orders');
+      
+      // Redirect to payment processing page
+      navigate('/dashboard/payment/processing', { 
+        state: { orderData } 
+      });
     } catch (error) {
-      alert('Failed to place order. Please try again.');
+      alert('Failed to prepare order. Please try again.');
       console.error(error);
     } finally {
       setLoading(false);

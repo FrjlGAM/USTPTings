@@ -15,6 +15,10 @@ import TransactionHistory from '../dashboard/pages/TransactionHistory';
 import Earnings from '../dashboard/pages/Earnings';
 import CustomerMessages from '../dashboard/pages/CustomerMessages';
 import SellerOrders from '../dashboard/pages/SellerOrders';
+import PaymentProcessing from '../dashboard/pages/PaymentProcessing';
+import PaymentCallback from '../dashboard/pages/PaymentCallback';
+import PaymentSuccess from '../dashboard/pages/PaymentSuccess';
+import PaymentFailed from '../dashboard/pages/PaymentFailed';
 import { useEffect, useState } from 'react';
 import { auth, db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -164,6 +168,26 @@ function App() {
       <Route path="/dashboard/seller-orders" element={
         <BannedCheck>
           <SellerOrders />
+        </BannedCheck>
+      } />
+      <Route path="/dashboard/payment/processing" element={
+        <BannedCheck>
+          <PaymentProcessing />
+        </BannedCheck>
+      } />
+      <Route path="/dashboard/payment/callback" element={
+        <BannedCheck>
+          <PaymentCallback />
+        </BannedCheck>
+      } />
+      <Route path="/dashboard/payment/success" element={
+        <BannedCheck>
+          <PaymentSuccess />
+        </BannedCheck>
+      } />
+      <Route path="/dashboard/payment/failed" element={
+        <BannedCheck>
+          <PaymentFailed />
         </BannedCheck>
       } />
     </Routes>
