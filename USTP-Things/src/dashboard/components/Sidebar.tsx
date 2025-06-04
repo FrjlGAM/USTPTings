@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { auth, db } from '../../lib/firebase';
-import { collection, query, where, getDocs, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import ustpLogo from '../../assets/ustp-things-logo.png';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+// import ustpLogo from '../../assets/ustp-things-logo.png';
 import userAvatar from '../../assets/ustp thingS/Person.png';
 import homeIcon from '../../assets/ustp thingS/Home.png';
 import heartIcon from '../../assets/ustp thingS/Heart.png';
@@ -10,7 +10,7 @@ import purchasesIcon from '../../assets/ustp thingS/Purchases.png';
 import rateIcon from '../../assets/ustp thingS/Rate.png';
 import chatIcon from '../../assets/ustp thingS/Message circle.png';
 import settingsIcon from '../../assets/ustp thingS/Settings.png';
-import { useNavigate, Routes, Route } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 // Add prop type
 type SidebarProps = {
@@ -28,10 +28,10 @@ type SidebarProps = {
 
 export default function Sidebar({ 
   onVerifyClick, 
-  onHomeClick, 
-  onLikesClick, 
-  onRecentlyClick, 
-  onOrdersClick, 
+  // onHomeClick, 
+  // onLikesClick, 
+  // onRecentlyClick, 
+  // onOrdersClick, 
   onRateClick, 
   onMessageClick, 
   onStartSellingClick,

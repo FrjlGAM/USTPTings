@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import ProductCard from '../components/ProductCard';
 import ProductDetail from './ProductDetail';
 import { db, auth } from '../../lib/firebase';
@@ -8,6 +8,7 @@ interface RecentlyViewedProps {
   onProductClick?: (product: any) => void;
 }
 
+// @ts-ignore
 export default function RecentlyViewed({ onProductClick }: RecentlyViewedProps) {
   const [products, setProducts] = useState<any[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);

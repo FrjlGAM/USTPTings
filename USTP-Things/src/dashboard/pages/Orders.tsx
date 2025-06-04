@@ -1,21 +1,24 @@
 import Sidebar from '../components/Sidebar';
 import ustpLogo from '../../assets/ustp-things-logo.png';
-import userAvatar from '../../assets/ustp thingS/Person.png';
+// import userAvatar from '../../assets/ustp thingS/Person.png';
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { db, auth } from '../../lib/firebase';
+// @ts-ignore
 import { collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
 import StarRatingButton from '../components/StarRatingButton';
 
+
+// @ts-ignore
 interface SellerData {
   businessName: string;
   avatar?: string;
 }
-
+// @ts-ignore
 interface ProductData {
   name: string;
 }
-
+// @ts-ignore
 interface OrderData {
   userId: string;
   sellerId: string;
@@ -53,6 +56,7 @@ interface Order {
 }
 
 export default function Orders() {
+  // @ts-ignore
   const [showModal, setShowModal] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,6 +85,8 @@ export default function Orders() {
             createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(),
           } as Order);
         });
+        // Sort orders by createdAt in descending order (most recent first)
+        ordersList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
         setOrders(ordersList);
       } catch (error) {
         console.error('Error fetching orders:', error);

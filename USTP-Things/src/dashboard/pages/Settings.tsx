@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import homeLogo from "../../assets/ustp thingS/Home.png";
 import { useNavigate } from "react-router-dom";
 import RequestAccountDeletion from "../components/RequestAccountDeletion";

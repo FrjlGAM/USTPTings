@@ -1,10 +1,11 @@
 import Sidebar from '../components/Sidebar';
 import ustpLogo from '../../assets/ustp-things-logo.png';
-import uniformImg from '../../assets/ustp thingS/Product.png';
+// import uniformImg from '../../assets/ustp thingS/Product.png';
 import cartIcon from '../../assets/ustp thingS/Shopping cart.png';
 import searchIcon from '../../assets/ustp thingS/search.png';
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { db, auth } from '../../lib/firebase';
+// @ts-ignore
 import { collection, addDoc, getDocs, doc, setDoc, arrayUnion, arrayRemove, getDoc, query, where, onSnapshot } from 'firebase/firestore';
 import MyLikes from './MyLikes';
 import RecentlyViewed from './RecentlyViewed';
@@ -32,6 +33,7 @@ export default function Dashboard() {
   const [selectedCategory, setSelectedCategory] = useState('For You');
   const [search, setSearch] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  // @ts-ignore
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);

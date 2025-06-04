@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import HeartButton from './HeartButton';
 import { db, auth } from '../../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';

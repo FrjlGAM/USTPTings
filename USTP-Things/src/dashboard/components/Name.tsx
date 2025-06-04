@@ -10,7 +10,7 @@ type NameModalProps = {
 
 export default function Name({ onClose, onSave, initialName = "" }: NameModalProps) {
   const [name, setName] = useState(initialName);
-  const [showNameModal, setShowNameModal] = useState(false);
+  // const [showNameModal, setShowNameModal] = useState(false);
   const [isSaveHovered, setIsSaveHovered] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {

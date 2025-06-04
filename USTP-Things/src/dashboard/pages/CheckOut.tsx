@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { FirebaseError } from 'firebase/app';
+import { auth } from '../../lib/firebase';
 import Sidebar from '../components/Sidebar';
 import ConfirmOrder from '../components/ConfirmOrder';
+import { calculateServiceFee, formatCurrency, formatPercentage } from '../../utils/serviceFees';
+import type { ServiceFeeCalculation } from '../../utils/serviceFees';
 
 interface CheckOutProps {
   product: {
@@ -17,18 +17,16 @@ interface CheckOutProps {
     paymentMethod?: string | string[];
     campusLocation?: string;
   };
-  onClose?: () => void;
 }
 
-export default function CheckOut({ product, onClose }: CheckOutProps) {
+export default function CheckOut({ product }: CheckOutProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [schoolLocation, setSchoolLocation] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [quantity, setQuantity] = useState(1);
-  const orderingDisabled = false; // or from props/config
+  const [serviceFeeData, setServiceFeeData] = useState<ServiceFeeCalculation | null>(null);
 
   // Validate product data on mount
   useEffect(() => {
@@ -37,6 +35,23 @@ export default function CheckOut({ product, onClose }: CheckOutProps) {
       navigate(-1);
     }
   }, [product, navigate]);
+
+  // Calculate service fees when quantity changes
+  useEffect(() => {
+    const updateServiceFees = async () => {
+      if (!auth.currentUser?.uid) return;
+      
+      try {
+        const subtotal = calculateSubtotal();
+        const feeData = await calculateServiceFee(subtotal, auth.currentUser.uid);
+        setServiceFeeData(feeData);
+      } catch (error) {
+        console.error('Error calculating service fees:', error);
+      }
+    };
+
+    updateServiceFees();
+  }, [quantity, product.price]);
 
   const handleCancel = () => {
     navigate(-1);
@@ -50,10 +65,6 @@ export default function CheckOut({ product, onClose }: CheckOutProps) {
   const calculateSubtotal = () => {
     const basePrice = parseFloat(product.price.replace('₱', '').replace(',', ''));
     return basePrice * quantity;
-  };
-
-  const formatPrice = (amount: number) => {
-    return `₱${amount.toLocaleString()}`;
   };
 
   // Get available date slots from product
@@ -82,6 +93,8 @@ export default function CheckOut({ product, onClose }: CheckOutProps) {
   };
 
   const handleConfirmOrder = async () => {
+    if (loading) return; // Prevent multiple submissions
+    
     setLoading(true);
     try {
       const orderData = {
@@ -94,16 +107,23 @@ export default function CheckOut({ product, onClose }: CheckOutProps) {
         pickupTime: selectedTime,
         paymentMethod: selectedPaymentMethod,
         quantity,
-        totalAmount: calculateSubtotal(),
-        createdAt: serverTimestamp(),
+        subtotal: calculateSubtotal(),
+        serviceFeeAmount: serviceFeeData?.serviceFeeAmount || 0,
+        serviceFeeRate: serviceFeeData?.serviceFeeRate || 0,
+        totalAmount: serviceFeeData?.totalAmount || calculateSubtotal(),
+        userType: serviceFeeData?.userType || 'unverified',
         productName: product.name,
         productImage: product.image,
       };
-      await addDoc(collection(db, 'orders'), orderData);
+      
       setShowConfirmModal(false);
-      navigate('/dashboard/orders');
+      
+      // Redirect to payment processing page
+      navigate('/dashboard/payment/processing', { 
+        state: { orderData } 
+      });
     } catch (error) {
-      alert('Failed to place order. Please try again.');
+      alert('Failed to prepare order. Please try again.');
       console.error(error);
     } finally {
       setLoading(false);
@@ -155,8 +175,22 @@ export default function CheckOut({ product, onClose }: CheckOutProps) {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Subtotal</span>
-                  <span className="font-semibold">{formatPrice(calculateSubtotal())}</span>
+                  <span className="font-semibold">{formatCurrency(calculateSubtotal())}</span>
                 </div>
+                {serviceFeeData && serviceFeeData.serviceFeeAmount > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">
+                      Service Fee ({formatPercentage(serviceFeeData.serviceFeeRate)})
+                    </span>
+                    <span className="font-semibold">{formatCurrency(serviceFeeData.serviceFeeAmount)}</span>
+                  </div>
+                )}
+                {serviceFeeData && (
+                  <div className="flex justify-between items-center border-t pt-2 mt-2">
+                    <span className="text-gray-900 font-semibold">Total</span>
+                    <span className="font-bold text-lg">{formatCurrency(serviceFeeData.totalAmount)}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -254,6 +288,20 @@ export default function CheckOut({ product, onClose }: CheckOutProps) {
         open={showConfirmModal}
         onConfirm={handleConfirmOrder}
         onCancel={() => setShowConfirmModal(false)}
+        orderDetails={{
+          productName: product.name,
+          productImage: product.image,
+          price: product.price,
+          quantity,
+          subtotal: calculateSubtotal(),
+          serviceFeeAmount: serviceFeeData?.serviceFeeAmount || 0,
+          serviceFeeRate: serviceFeeData?.serviceFeeRate || 0,
+          totalAmount: serviceFeeData?.totalAmount || calculateSubtotal(),
+          selectedDate,
+          selectedTime,
+          paymentMethod: selectedPaymentMethod,
+          campusLocation: product.campusLocation,
+        }}
       />
     </div>
   );
