@@ -4,7 +4,7 @@ import profilePic from "../../assets/ustp thingS/Person.png";
 import manageProductsIcon from "../../assets/ustp thingS/Product.png";
 import productOrdersIcon from "../../assets/ustp thingS/Bag.png";
 import customerMessagesIcon from "../../assets/ustp thingS/Chat Bubble.png";
-import productCountIcon from "../../assets/ustp thingS/productCount.png";
+import productCountIcon from "../../assets/ustp thingS/ProductCount.png";
 import earningsIcon from "../../assets/ustp thingS/Earnings.png";
 import visitedIcon from "../../assets/ustp thingS/Followers.png";
 import transactionHistoryIcon from "../../assets/ustp thingS/TransactionHistory.png";
