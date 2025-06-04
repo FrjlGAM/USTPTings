@@ -50,25 +50,43 @@ export function useSalesEarnings(): SalesEarningsData {
       let monthlySales = 0;
       let monthlyEarnings = 0;
 
-      // Only include completed transactions
-      const completedTransactions = transactions.filter(tx => tx.status === 'completed');
+      // Only include completed transactions and filter out invalid data
+      const completedTransactions = transactions.filter(tx => 
+        tx.status === 'completed' && 
+        tx.createdAt && 
+        typeof tx.createdAt.toDate === 'function'
+      );
 
       completedTransactions.forEach(tx => {
         const createdAt = tx.createdAt.toDate();
-        const sales = tx.totalAmount;
-        const earnings = tx.platformRevenue; // Platform gets service fee
+        // Ensure values are valid numbers, default to 0 if not
+        const sales = Number(tx.totalAmount) || 0;
+        const earnings = Number(tx.platformRevenue) || Number(tx.serviceFeeAmount) || 0; // Platform gets service fee
 
-        totalSales += sales;
-        totalEarnings += earnings;
+        // Only add valid numbers
+        if (!isNaN(sales)) {
+          totalSales += sales;
+        }
+        if (!isNaN(earnings)) {
+          totalEarnings += earnings;
+        }
 
         if (createdAt >= startOfWeek) {
-          weeklySales += sales;
-          weeklyEarnings += earnings;
+          if (!isNaN(sales)) {
+            weeklySales += sales;
+          }
+          if (!isNaN(earnings)) {
+            weeklyEarnings += earnings;
+          }
         }
 
         if (createdAt >= startOfMonth) {
-          monthlySales += sales;
-          monthlyEarnings += earnings;
+          if (!isNaN(sales)) {
+            monthlySales += sales;
+          }
+          if (!isNaN(earnings)) {
+            monthlyEarnings += earnings;
+          }
         }
       });
 
@@ -94,10 +112,23 @@ export function useSalesEarnings(): SalesEarningsData {
       transactionsQuery,
       (snapshot) => {
         try {
-          const transactions: TransactionRecord[] = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as TransactionRecord));
+          const transactions: TransactionRecord[] = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              // Ensure numeric fields are properly typed
+              totalAmount: Number(data.totalAmount) || 0,
+              platformRevenue: Number(data.platformRevenue) || Number(data.serviceFeeAmount) || 0,
+              serviceFeeAmount: Number(data.serviceFeeAmount) || 0,
+              quantity: Number(data.quantity) || 0,
+            } as TransactionRecord;
+          }).filter(tx => 
+            // Filter out transactions with invalid data
+            tx.createdAt && 
+            typeof tx.totalAmount === 'number' && 
+            !isNaN(tx.totalAmount)
+          );
 
           const metrics = calculateMetrics(transactions);
           
@@ -158,10 +189,23 @@ export function useRecentTransactions(limitInput?: number) { // Changed signatur
             docsToProcess = docsToProcess.slice(0, limitInput);
           }
 
-          const txData: TransactionRecord[] = docsToProcess.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as TransactionRecord));
+          const txData: TransactionRecord[] = docsToProcess.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              // Ensure numeric fields are properly typed
+              totalAmount: Number(data.totalAmount) || 0,
+              platformRevenue: Number(data.platformRevenue) || Number(data.serviceFeeAmount) || 0,
+              serviceFeeAmount: Number(data.serviceFeeAmount) || 0,
+              quantity: Number(data.quantity) || 0,
+            } as TransactionRecord;
+          }).filter(tx => 
+            // Filter out transactions with invalid data
+            tx.createdAt && 
+            typeof tx.totalAmount === 'number' && 
+            !isNaN(tx.totalAmount)
+          );
 
           setTransactions(txData);
           setLoading(false);

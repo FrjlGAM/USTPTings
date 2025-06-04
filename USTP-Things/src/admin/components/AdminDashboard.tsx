@@ -69,6 +69,14 @@ export default function AdminDashboard() {
   // Legacy states for user count (still needed)
   const [totalUsers, setTotalUsers] = useState(0);
 
+  // Helper function to safely format currency values
+  const formatCurrency = (value: number): string => {
+    if (typeof value !== 'number' || isNaN(value)) {
+      return '₱0';
+    }
+    return `₱${value.toLocaleString()}`;
+  };
+
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (!user) {
@@ -440,7 +448,7 @@ export default function AdminDashboard() {
             <div className="bg-white rounded-xl border-2 border-pink-100 p-6 flex flex-col items-start">
               <span className="text-gray-500 font-medium mb-1">Total Sales</span>
               <span className="text-2xl font-bold text-gray-700">
-                {salesEarningsData.loading ? 'Loading...' : `₱${salesEarningsData.totalSales.toLocaleString()}`}
+                {salesEarningsData.loading ? 'Loading...' : formatCurrency(salesEarningsData.totalSales)}
               </span>
             </div>
             <div className="bg-white rounded-xl border-2 p-6 flex flex-col items-start" style={{borderColor: '#F88379'}}>
@@ -453,25 +461,25 @@ export default function AdminDashboard() {
                 <div>
                   <div className="text-xs text-gray-500">Total Earnings</div>
                   <div className="font-bold text-lg text-gray-700">
-                    {salesEarningsData.loading ? 'Loading...' : `₱${salesEarningsData.totalEarnings.toLocaleString()}`}
+                    {salesEarningsData.loading ? 'Loading...' : formatCurrency(salesEarningsData.totalEarnings)}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">Total Revenue</div>
                   <div className="font-bold text-lg text-gray-700">
-                    {salesEarningsData.loading ? 'Loading...' : `₱${salesEarningsData.totalSales.toLocaleString()}`}
+                    {salesEarningsData.loading ? 'Loading...' : formatCurrency(salesEarningsData.totalSales)}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">This Week</div>
                   <div className="font-bold text-lg text-gray-700">
-                    {salesEarningsData.loading ? 'Loading...' : `₱${salesEarningsData.weeklySales.toLocaleString()}`}
+                    {salesEarningsData.loading ? 'Loading...' : formatCurrency(salesEarningsData.weeklySales)}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">This Month</div>
                   <div className="font-bold text-lg text-gray-700">
-                    {salesEarningsData.loading ? 'Loading...' : `₱${salesEarningsData.monthlySales.toLocaleString()}`}
+                    {salesEarningsData.loading ? 'Loading...' : formatCurrency(salesEarningsData.monthlySales)}
                   </div>
                 </div>
               </div>
@@ -504,7 +512,7 @@ export default function AdminDashboard() {
                             <img src={tx.productImage || userAvatar} alt="Product" className="w-10 h-10 rounded-full border border-pink-200" />
                             <span className="text-gray-700">{tx.productName}</span>
                           </td>
-                          <td className="py-3 px-2 font-semibold text-gray-700">₱{Number(tx.totalAmount).toLocaleString()}</td>
+                          <td className="py-3 px-2 font-semibold text-gray-700">{formatCurrency(Number(tx.totalAmount) || 0)}</td>
                           <td className="py-3 px-2 font-semibold text-gray-700">{tx.quantity}</td>
                           <td className="py-3 px-2 text-gray-500">
                             {tx.createdAt.toDate().toLocaleDateString()}
