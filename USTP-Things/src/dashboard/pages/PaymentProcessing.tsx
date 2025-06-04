@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { auth, db } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { createPayment } from '../../lib/xenditPayment';
 import { createTransactionRecord } from '../../lib/transactionService';
 import type { PaymentRequest } from '../../lib/xenditPayment';
@@ -33,8 +33,43 @@ export default function PaymentProcessing() {
       if (orderData.paymentMethod !== 'GCash') {
         // For non-GCash payments, directly create the order
         try {
+          // Generate a unique external ID for this order
+          const externalID = `order_${Date.now()}_${auth.currentUser.uid}`;
+          
+          // Check if order already exists to prevent duplicates
+          const existingOrderQuery = query(
+            collection(db, 'orders'),
+            where('userId', '==', orderData.userId),
+            where('productId', '==', orderData.productId),
+            where('totalAmount', '==', orderData.totalAmount),
+            where('pickupDate', '==', orderData.pickupDate),
+            where('pickupTime', '==', orderData.pickupTime)
+          );
+          const existingOrderSnapshot = await getDocs(existingOrderQuery);
+          
+          // Check if there's a recent order (within last 5 minutes) to prevent rapid duplicates
+          const recentOrders = existingOrderSnapshot.docs.filter(doc => {
+            const orderCreatedAt = doc.data().createdAt?.toDate();
+            if (!orderCreatedAt) return false;
+            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+            return orderCreatedAt > fiveMinutesAgo;
+          });
+          
+          if (recentOrders.length > 0) {
+            console.log('Recent order exists, redirecting to success');
+            const existingOrder = recentOrders[0];
+            navigate('/dashboard/payment/success', { 
+              state: { 
+                orderData: existingOrder.data(),
+                paymentMethod: orderData.paymentMethod 
+              } 
+            });
+            return;
+          }
+
           const orderDoc = {
             ...orderData,
+            externalID,
             createdAt: serverTimestamp(),
             paymentStatus: 'completed'
           };
@@ -55,7 +90,8 @@ export default function PaymentProcessing() {
               serviceFeeAmount: orderData.serviceFeeAmount || 0,
               serviceFeeRate: orderData.serviceFeeRate || 0,
               totalAmount: orderData.totalAmount,
-              paymentMethod: orderData.paymentMethod
+              paymentMethod: orderData.paymentMethod,
+              paymentId: externalID
             });
           } catch (transactionError) {
             console.error('Error creating transaction record:', transactionError);
@@ -64,7 +100,7 @@ export default function PaymentProcessing() {
 
           navigate('/dashboard/payment/success', { 
             state: { 
-              orderData,
+              orderData: orderDoc,
               paymentMethod: orderData.paymentMethod 
             } 
           });

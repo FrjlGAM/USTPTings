@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../../lib/firebase';
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
@@ -12,15 +12,17 @@ export default function PaymentCallback() {
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const processedRef = useRef(false);
 
   useEffect(() => {
     const handlePaymentCallback = async () => {
-      // Prevent multiple simultaneous executions
-      if (processing) {
-        console.log('Payment callback already in progress, skipping...');
+      // Prevent multiple simultaneous executions using ref
+      if (processedRef.current || processing) {
+        console.log('Payment callback already in progress or completed, skipping...');
         return;
       }
       
+      processedRef.current = true;
       setProcessing(true);
       
       try {
@@ -32,15 +34,26 @@ export default function PaymentCallback() {
 
         const orderData = JSON.parse(storedOrderData);
         
-        // Check if this callback has already been processed by checking sessionStorage flag
+        // More robust duplicate check using both sessionStorage AND database
         const processedKey = `processed_${orderData.externalID}`;
-        if (sessionStorage.getItem(processedKey)) {
+        const sessionProcessed = sessionStorage.getItem(processedKey);
+        
+        // Also check if order already exists in database
+        const existingOrderQuery = query(
+          collection(db, 'orders'),
+          where('externalID', '==', orderData.externalID)
+        );
+        const existingOrderSnapshot = await getDocs(existingOrderQuery);
+        
+        if (sessionProcessed && !existingOrderSnapshot.empty) {
           console.log('Payment callback already processed for:', orderData.externalID);
-          // Clear processing flag and redirect to success
-          setProcessing(false);
+          const existingOrder = existingOrderSnapshot.docs[0];
+          const existingOrderData = existingOrder.data();
+          
+          // Navigate to success with existing order data
           navigate('/dashboard/payment/success', {
             state: {
-              orderData,
+              orderData: existingOrderData,
               paymentMethod: orderData.paymentMethod
             }
           });
@@ -101,17 +114,11 @@ export default function PaymentCallback() {
         });
 
         if (isPaymentSuccessful) {
-          // Check if order with this externalID already exists to prevent duplicates
-          const existingOrderQuery = query(
-            collection(db, 'orders'),
-            where('externalID', '==', orderData.externalID)
-          );
-          const existingOrderSnapshot = await getDocs(existingOrderQuery);
           
           if (!existingOrderSnapshot.empty) {
             console.log('Order already exists for externalID:', orderData.externalID);
             
-            // Order already exists, check if transaction exists and create if needed
+            // Order already exists, ensure transaction exists
             const existingOrder = existingOrderSnapshot.docs[0];
             const existingOrderData = existingOrder.data();
             
@@ -137,8 +144,7 @@ export default function PaymentCallback() {
               // Don't fail if transaction already exists
             }
             
-            // Mark as processed to prevent duplicates
-            const processedKey = `processed_${orderData.externalID}`;
+            // Mark as processed to prevent future duplicates
             sessionStorage.setItem(processedKey, 'true');
             
             // Clear session storage
@@ -175,6 +181,7 @@ export default function PaymentCallback() {
             externalID: orderData.externalID
           };
 
+          // Use a unique document ID based on externalID to prevent duplicates
           const orderDocRef = await addDoc(collection(db, 'orders'), orderDoc);
 
           // Create transaction record for admin dashboard
@@ -200,7 +207,6 @@ export default function PaymentCallback() {
           }
 
           // Mark as processed to prevent duplicates
-          const processedKey = `processed_${orderData.externalID}`;
           sessionStorage.setItem(processedKey, 'true');
 
           // Clear session storage
@@ -252,7 +258,7 @@ export default function PaymentCallback() {
     };
 
     handlePaymentCallback();
-  }, [navigate, searchParams, processing]);
+  }, [navigate, searchParams]); // Removed processing from dependencies
 
   return (
     <div className="min-h-screen bg-[#f7f6fd] flex items-center justify-center">

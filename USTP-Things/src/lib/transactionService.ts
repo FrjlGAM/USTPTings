@@ -50,6 +50,15 @@ export async function createTransactionRecord(orderData: {
       return existingTransaction.id!;
     }
 
+    // Also check if transaction exists for this paymentId (additional safety)
+    if (orderData.paymentId) {
+      const existingByPaymentId = await getTransactionByPaymentId(orderData.paymentId);
+      if (existingByPaymentId) {
+        console.log('Transaction already exists for paymentId:', orderData.paymentId);
+        return existingByPaymentId.id!;
+      }
+    }
+
     const transaction: Omit<TransactionRecord, 'id'> = {
       orderId: orderData.orderId,
       buyerId: orderData.buyerId,
@@ -123,6 +132,33 @@ export async function getTransactionByOrderId(orderId: string): Promise<Transact
     return null;
   } catch (error) {
     console.error('Error getting transaction by order ID:', error);
+    return null;
+  }
+}
+
+/**
+ * Get transaction by payment ID
+ */
+export async function getTransactionByPaymentId(paymentId: string): Promise<TransactionRecord | null> {
+  try {
+    const transactionQuery = query(
+      collection(db, 'transactions'),
+      where('paymentId', '==', paymentId),
+      limit(1)
+    );
+    const snapshot = await getDocs(transactionQuery);
+    
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      return {
+        id: doc.id,
+        ...doc.data()
+      } as TransactionRecord;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting transaction by payment ID:', error);
     return null;
   }
 }
