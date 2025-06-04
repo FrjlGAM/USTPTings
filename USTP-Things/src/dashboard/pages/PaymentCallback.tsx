@@ -53,7 +53,13 @@ export default function PaymentCallback() {
           // Navigate to success with existing order data
           navigate('/dashboard/payment/success', {
             state: {
-              orderData: existingOrderData,
+              orderData: {
+                ...existingOrderData,
+                // Ensure service fee data is included from original order
+                subtotal: orderData.subtotal || existingOrderData.subtotal,
+                serviceFeeAmount: orderData.serviceFeeAmount || existingOrderData.serviceFeeAmount || 0,
+                serviceFeeRate: orderData.serviceFeeRate || existingOrderData.serviceFeeRate || 0,
+              },
               paymentMethod: orderData.paymentMethod
             }
           });
@@ -153,7 +159,13 @@ export default function PaymentCallback() {
             // Redirect to success page
             navigate('/dashboard/payment/success', {
               state: {
-                orderData: existingOrderData,
+                orderData: {
+                  ...existingOrderData,
+                  // Ensure service fee data is included from original order
+                  subtotal: orderData.subtotal || existingOrderData.subtotal,
+                  serviceFeeAmount: orderData.serviceFeeAmount || existingOrderData.serviceFeeAmount || 0,
+                  serviceFeeRate: orderData.serviceFeeRate || existingOrderData.serviceFeeRate || 0,
+                },
                 paymentMethod: orderData.paymentMethod,
                 paymentId: paymentId
               }
@@ -172,6 +184,9 @@ export default function PaymentCallback() {
             pickupTime: orderData.pickupTime,
             paymentMethod: orderData.paymentMethod,
             quantity: orderData.quantity,
+            subtotal: orderData.subtotal || orderData.totalAmount,
+            serviceFeeAmount: orderData.serviceFeeAmount || 0,
+            serviceFeeRate: orderData.serviceFeeRate || 0,
             totalAmount: orderData.totalAmount,
             productName: orderData.productName,
             productImage: orderData.productImage,

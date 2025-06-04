@@ -70,12 +70,13 @@ export default function PaymentSuccess() {
                 <span className="text-gray-600">Subtotal:</span>
                 <span className="font-medium">{formatCurrency(orderData.subtotal || orderData.totalAmount)}</span>
               </div>
-              {orderData.serviceFeeAmount > 0 && (
+              {/* Always show service fee section if we have the rate and amount data */}
+              {(orderData.serviceFeeAmount !== undefined && orderData.serviceFeeRate !== undefined) && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">
-                    Service Fee ({formatPercentage(orderData.serviceFeeRate)}):
+                    Service Fee ({formatPercentage(orderData.serviceFeeRate || 0)}):
                   </span>
-                  <span className="font-medium">{formatCurrency(orderData.serviceFeeAmount)}</span>
+                  <span className="font-medium">{formatCurrency(orderData.serviceFeeAmount || 0)}</span>
                 </div>
               )}
               <div className="flex justify-between border-t pt-2 mt-2">
