@@ -288,6 +288,20 @@ export default function CheckOut({ product }: CheckOutProps) {
         open={showConfirmModal}
         onConfirm={handleConfirmOrder}
         onCancel={() => setShowConfirmModal(false)}
+        orderDetails={{
+          productName: product.name,
+          productImage: product.image,
+          price: product.price,
+          quantity,
+          subtotal: calculateSubtotal(),
+          serviceFeeAmount: serviceFeeData?.serviceFeeAmount || 0,
+          serviceFeeRate: serviceFeeData?.serviceFeeRate || 0,
+          totalAmount: serviceFeeData?.totalAmount || calculateSubtotal(),
+          selectedDate,
+          selectedTime,
+          paymentMethod: selectedPaymentMethod,
+          campusLocation: product.campusLocation,
+        }}
       />
     </div>
   );
