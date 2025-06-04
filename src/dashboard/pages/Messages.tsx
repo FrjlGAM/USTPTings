@@ -48,6 +48,7 @@ interface UserData {
 
 // Chat component for individual conversations
 function ChatWindow({ userId }: { userId: string }) {
+  //@ts-ignore
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
