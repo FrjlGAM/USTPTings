@@ -2,10 +2,14 @@ import React from 'react';
 import Sidebar from '../components/Sidebar';
 import ustpLogo from '../../assets/ustp-things-logo.png';
 import userAvatar from '../../assets/ustp thingS/Person.png';
-import { useState, useEffect } from 'react';
+import sendIcon from '../../assets/ustp thingS/Send.png';
+import imageIcon from '../../assets/ustp thingS/Image.png';
+import cameraIcon from '../../assets/ustp thingS/Camera.png';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, where, getDocs, doc, setDoc, increment, getDoc, Timestamp } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
+import { uploadToCloudinary } from '../../lib/cloudinaryUpload';
 
 interface Message {
   id: string;
@@ -39,18 +43,24 @@ interface UserData {
   displayName?: string;
   username?: string;
   photoURL?: string;
+  profileImage?: string;
 }
 
 // Chat component for individual conversations
 function ChatWindow({ userId }: { userId: string }) {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [otherUserName, setOtherUserName] = useState<string>('');
+  const [otherUserAvatar, setOtherUserAvatar] = useState<string>(userAvatar);
+  const [uploading, setUploading] = useState(false);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const typingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Debugging logs
   React.useEffect(() => {
@@ -58,23 +68,27 @@ function ChatWindow({ userId }: { userId: string }) {
     console.log('[ChatWindow] userId from URL:', userId);
   }, [userId]);
 
-  // Fetch other user's username
+  // Fetch other user's username and profile picture
   React.useEffect(() => {
     if (!userId) return;
-    const fetchUsername = async () => {
+    const fetchUserData = async () => {
       try {
         const userDoc = await getDoc(doc(db, 'users', userId));
         if (userDoc.exists()) {
-          setOtherUserName(userDoc.data().username || userDoc.data().name || 'Unknown User');
+          const userData = userDoc.data();
+          setOtherUserName(userData.username || userData.name || 'Unknown User');
+          setOtherUserAvatar(userData.profileImage || userAvatar);
         } else {
           setOtherUserName('Unknown User');
+          setOtherUserAvatar(userAvatar);
         }
       } catch (error) {
-        console.error('Error fetching username:', error);
+        console.error('Error fetching user data:', error);
         setOtherUserName('Unknown User');
+        setOtherUserAvatar(userAvatar);
       }
     };
-    fetchUsername();
+    fetchUserData();
   }, [userId]);
 
   const scrollToBottom = (options: ScrollIntoViewOptions = { behavior: "smooth" }) => {
@@ -197,40 +211,125 @@ function ChatWindow({ userId }: { userId: string }) {
       }, 1000);
 
       // Update or create chat room
-      const chatRoomRef = collection(db, 'chatRooms');
-      const q = query(
-        chatRoomRef,
-        where('participants', 'array-contains', auth.currentUser.uid)
-      );
-      const snapshot = await getDocs(q);
-      let chatRoomId: string | null = null;
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.participants.includes(userId)) {
-          chatRoomId = doc.id;
-        }
-      });
-
-      if (chatRoomId) {
-        const docRef = doc(db, 'chatRooms', chatRoomId);
-        await setDoc(docRef, {
-          lastMessage: newMessage,
-          lastMessageTime: serverTimestamp(),
-          unreadCount: increment(1)
-        }, { merge: true });
-      } else {
-        await addDoc(chatRoomRef, {
-          participants: [auth.currentUser.uid, userId],
-          lastMessage: newMessage,
-          lastMessageTime: serverTimestamp(),
-          unreadCount: 1
-        });
-      }
+      await updateChatRoom(newMessage);
 
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
       setError('Failed to send message. Please try again.');
+    }
+  };
+
+  const sendFileMessage = async (file: File, type: 'image' | 'file') => {
+    if (!auth.currentUser) return;
+
+    setUploading(true);
+    setError(null); // Clear any previous errors
+    
+    try {
+      // Validate file size (10MB limit)
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (file.size > maxSize) {
+        setError('File size must be less than 10MB');
+        setUploading(false);
+        return;
+      }
+
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/mov', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+      
+      if (!allowedTypes.includes(file.type)) {
+        setError('Unsupported file type. Please upload images, videos, PDFs, or documents.');
+        setUploading(false);
+        return;
+      }
+
+      console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type);
+
+      // Upload file to Cloudinary
+      const fileUrl = await uploadToCloudinary(file, 'profile_picture');
+      
+      const messageData = {
+        text: type === 'image' ? 'Sent an image' : `Sent a file: ${file.name}`,
+        senderId: auth.currentUser.uid,
+        receiverId: userId,
+        sender: auth.currentUser.email,
+        timestamp: serverTimestamp(),
+        participants: [auth.currentUser.uid, userId],
+        status: 'sent',
+        type: type,
+        fileUrl: fileUrl,
+        fileName: file.name
+      };
+
+      const messageRef = await addDoc(collection(db, 'messages'), messageData);
+      
+      // Update message status to delivered
+      setTimeout(() => {
+        setDoc(doc(db, 'messages', messageRef.id), { status: 'delivered' }, { merge: true });
+      }, 1000);
+
+      // Update chat room
+      await updateChatRoom(messageData.text);
+
+    } catch (error) {
+      console.error('Error sending file:', error);
+      if (error instanceof Error) {
+        setError(`Failed to send file: ${error.message}`);
+      } else {
+        setError('Failed to send file. Please check your internet connection and try again.');
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const updateChatRoom = async (lastMessage: string) => {
+    if (!auth.currentUser) return;
+
+    const chatRoomRef = collection(db, 'chatRooms');
+    const q = query(
+      chatRoomRef,
+      where('participants', 'array-contains', auth.currentUser.uid)
+    );
+    const snapshot = await getDocs(q);
+    let chatRoomId: string | null = null;
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.participants.includes(userId)) {
+        chatRoomId = doc.id;
+      }
+    });
+
+    if (chatRoomId) {
+      const docRef = doc(db, 'chatRooms', chatRoomId);
+      await setDoc(docRef, {
+        lastMessage: lastMessage,
+        lastMessageTime: serverTimestamp(),
+        unreadCount: increment(1)
+      }, { merge: true });
+    } else {
+      await addDoc(chatRoomRef, {
+        participants: [auth.currentUser.uid, userId],
+        lastMessage: lastMessage,
+        lastMessageTime: serverTimestamp(),
+        unreadCount: 1
+      });
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const isImage = file.type.startsWith('image/');
+      sendFileMessage(file, isImage ? 'image' : 'file');
+    }
+  };
+
+  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      sendFileMessage(file, 'image');
     }
   };
 
@@ -245,14 +344,27 @@ function ChatWindow({ userId }: { userId: string }) {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Chat header with username */}
-      <div className="flex items-center gap-4 px-8 py-4 bg-white shadow-md">
-        <h2 className="text-xl font-bold text-[#F88379]">Chat with</h2>
-        <span className="ml-2 text-lg text-gray-700 font-semibold">{otherUserName}</span>
+    <div className="flex flex-col h-full bg-white">
+      {/* Chat header with profile info */}
+      <div className="flex items-center gap-4 px-6 py-4 bg-white border-b">
+        <div className="flex items-center gap-3">
+          <img 
+            src={otherUserAvatar} 
+            alt="User Avatar" 
+            className="w-12 h-12 rounded-full object-cover border-2 border-[#F88379]" 
+          />
+          <div>
+            <h2 className="text-lg font-bold text-[#F88379]">{otherUserName || 'Galdo Boutique'}</h2>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+              <span className="text-sm text-gray-500">Online</span>
+            </div>
+          </div>
+        </div>
       </div>
+
       {/* Chat messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ paddingBottom: '110px' }}>
         {loading ? (
           <div className="flex justify-center items-center h-full">
             <p className="text-gray-500">Loading...</p>
@@ -272,50 +384,75 @@ function ChatWindow({ userId }: { userId: string }) {
                 key={message.id}
                 className={`flex ${
                   message.senderId === auth.currentUser?.uid ? 'justify-end' : 'justify-start'
-                }`}
+                } mb-4`}
               >
-                <div
-                  className={`max-w-[70%] rounded-lg p-3 ${
-                    message.senderId === auth.currentUser?.uid
-                      ? 'bg-[#F88379] text-white'
-                      : 'bg-gray-200 text-gray-800'
-                  }`}
-                >
-                  {message.type === 'text' ? (
-                    <p className="break-words">{message.text}</p>
-                  ) : message.type === 'image' ? (
-                    <img src={message.fileUrl} alt="Shared image" className="max-w-full rounded-lg" />
-                  ) : (
-                    <a
-                      href={message.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-blue-500 hover:underline"
-                    >
-                      <span>📎</span>
-                      <span>{message.fileName}</span>
-                    </a>
+                <div className="flex items-start gap-3 max-w-[80%]">
+                  {message.senderId !== auth.currentUser?.uid && (
+                    <img 
+                      src={otherUserAvatar} 
+                      alt="Avatar" 
+                      className="w-8 h-8 rounded-full object-cover flex-shrink-0" 
+                    />
                   )}
-                  <div className="flex items-center justify-end gap-1 mt-1">
-                    <span className="text-xs opacity-75">
-                      {message.timestamp?.toDate().toLocaleTimeString()}
-                    </span>
-                    {message.senderId === auth.currentUser?.uid && (
-                      <span className="text-xs">
-                        {message.status === 'read' ? '✓✓' : message.status === 'delivered' ? '✓✓' : '✓'}
-                      </span>
+                  <div
+                    className={`rounded-2xl px-4 py-3 max-w-full ${
+                      message.senderId === auth.currentUser?.uid
+                        ? 'bg-[#F88379] text-white rounded-br-md'
+                        : 'bg-white text-gray-800 rounded-bl-md shadow-sm border'
+                    }`}
+                  >
+                    {message.type === 'text' ? (
+                      <p className="break-words text-sm leading-relaxed">{message.text}</p>
+                    ) : message.type === 'image' ? (
+                      <div>
+                        <img 
+                          src={message.fileUrl} 
+                          alt="Shared image" 
+                          className="max-w-full max-h-64 rounded-lg object-cover" 
+                        />
+                        {message.text && message.text !== 'Sent an image' && (
+                          <p className="mt-2 text-sm">{message.text}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <a
+                        href={message.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-blue-500 hover:underline text-sm"
+                      >
+                        <span>📎</span>
+                        <span>{message.fileName}</span>
+                      </a>
                     )}
+                    <div className="flex items-center justify-end gap-1 mt-1">
+                      <span className="text-xs opacity-75">
+                        {message.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      {message.senderId === auth.currentUser?.uid && (
+                        <span className="text-xs">
+                          {message.status === 'read' ? '✓✓' : message.status === 'delivered' ? '✓✓' : '✓'}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
             {isTyping && (
-              <div className="flex justify-start">
-                <div className="bg-gray-200 text-gray-800 rounded-lg p-3">
-                  <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" />
-                    <span className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-100" />
-                    <span className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-200" />
+              <div className="flex justify-start mb-4">
+                <div className="flex items-start gap-3">
+                  <img 
+                    src={otherUserAvatar} 
+                    alt="Avatar" 
+                    className="w-8 h-8 rounded-full object-cover" 
+                  />
+                  <div className="bg-white text-gray-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm border">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100" />
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -325,33 +462,82 @@ function ChatWindow({ userId }: { userId: string }) {
         )}
       </div>
 
-      {/* Message input */}
-      <form onSubmit={sendMessage} className="p-4 border-t bg-white">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => {
-              setNewMessage(e.target.value);
-              handleTyping();
-            }}
-            onKeyPress={handleKeyPress}
-            placeholder="Type a message..."
-            className="flex-1 p-2 border rounded-lg focus:outline-none focus:border-[#F88379]"
-          />
-          <button
-            type="submit"
-            disabled={!newMessage.trim()}
-            className={`px-4 py-2 rounded-lg transition ${
-              newMessage.trim()
-                ? 'bg-[#F88379] text-white hover:bg-[#f96d62]'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }`}
-          >
-            Send
-          </button>
-        </div>
-      </form>
+      {/* Message input area - now fixed at the bottom */}
+      <div className="fixed bottom-0 left-[348px] right-0 z-20 bg-white border-t p-4" style={{maxWidth: 'calc(100vw - 348px)'}}>
+        {uploading && (
+          <div className="mb-3 text-center">
+            <span className="text-sm text-[#F88379]">Uploading file...</span>
+          </div>
+        )}
+        {error && (
+          <div className="mb-3 text-center">
+            <span className="text-sm text-red-500">{error}</span>
+          </div>
+        )}
+        {/* Hidden file inputs */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*,.pdf,.doc,.docx,.txt"
+          onChange={handleFileSelect}
+          style={{ display: 'none' }}
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleCameraCapture}
+          style={{ display: 'none' }}
+        />
+        <form onSubmit={sendMessage} className="flex items-center gap-3">
+          {/* Media buttons */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="w-10 h-10 rounded-full bg-[#F88379] hover:bg-[#f96d62] transition flex items-center justify-center disabled:opacity-50"
+              title="Send Picture/File"
+            >
+              <img src={imageIcon} alt="Image" className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={uploading}
+              className="w-10 h-10 rounded-full bg-[#F88379] hover:bg-[#f96d62] transition flex items-center justify-center disabled:opacity-50"
+              title="Take Photo"
+            >
+              <img src={cameraIcon} alt="Camera" className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Message input */}
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+                handleTyping();
+              }}
+              onKeyPress={handleKeyPress}
+              placeholder="Type message..."
+              className="w-full py-3 px-4 pr-12 rounded-full border border-gray-300 focus:outline-none focus:border-[#F88379] text-sm"
+              disabled={uploading}
+            />
+            <button
+              type="submit"
+              disabled={!newMessage.trim() || uploading}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-[#F88379] hover:bg-[#f96d62] transition flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Send Message"
+            >
+              <img src={sendIcon} alt="Send" className="w-4 h-4" />
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -410,13 +596,13 @@ export function MessagesContent() {
                 (otherUserData?.displayName || otherUserData?.username || "Unknown User"),
               sellerAvatar: data.sellerId === currentUser.uid ? 
                 (currentUser.photoURL || userAvatar) : 
-                (otherUserData?.photoURL || userAvatar),
+                (otherUserData?.profileImage || userAvatar),
               customerName: data.customerId === currentUser.uid ? 
                 (currentUser.displayName || "You") : 
                 (otherUserData?.displayName || otherUserData?.username || "Unknown User"),
               customerAvatar: data.customerId === currentUser.uid ? 
                 (currentUser.photoURL || userAvatar) : 
-                (otherUserData?.photoURL || userAvatar),
+                (otherUserData?.profileImage || userAvatar),
               unreadCount: data.unreadCount || 0
             } as ChatRoom;
 
@@ -531,8 +717,29 @@ export function MessagesContent() {
 function ChatPage() {
   const { userId } = useParams();
   const navigate = useNavigate();
+  const [otherUserName, setOtherUserName] = useState<string>('');
+
+  // Fetch other user's name for the header
+  useEffect(() => {
+    if (!userId) return;
+    const fetchUsername = async () => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', userId));
+        if (userDoc.exists()) {
+          setOtherUserName(userDoc.data().username || userDoc.data().name || 'Unknown User');
+        } else {
+          setOtherUserName('Unknown User');
+        }
+      } catch (error) {
+        console.error('Error fetching username:', error);
+        setOtherUserName('Unknown User');
+      }
+    };
+    fetchUsername();
+  }, [userId]);
+
   return (
-    <div className="flex min-h-screen bg-[#f7f6fd]">
+    <div className="flex min-h-screen bg-white">
       <div className="w-[348px] flex-shrink-0">
         <Sidebar
           onHomeClick={() => navigate('/dashboard')}
@@ -545,20 +752,17 @@ function ChatPage() {
         />
       </div>
       <main className="flex-1 flex flex-col">
-        <header className="flex items-center justify-between px-8 py-4 bg-white shadow-md">
+        <header className="fixed top-0 right-0 left-[348px] z-10 flex items-center justify-between px-8 py-4 bg-white shadow-md border-b">
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/dashboard/messages')}
-              className="text-[#F88379] hover:text-[#f96d62]"
-            >
-              ← Back
-            </button>
-            <h1 className="text-2xl font-bold text-[#F88379]">
-              Chat
-            </h1>
+            <img src={ustpLogo} alt="USTP Things Logo" className="w-[80px] h-[63px] object-contain border-r-2 border-[#F88379]" />
+            <h3 className="text-2xl font-bold text-[#F88379]">
+             <span className='text-[#fb9e95] font-medium'> My Messages {`>`}</span> {otherUserName}
+            </h3>
           </div>
         </header>
-        {userId && <ChatWindow userId={userId} />}
+        <div className="pt-[95px] flex-1">
+          {userId && <ChatWindow userId={userId} />}
+        </div>
       </main>
     </div>
   );
@@ -574,7 +778,7 @@ export default function Messages() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#f7f6fd]">
+    <div className="flex min-h-screen bg-white">
       <div className="w-[348px] flex-shrink-0">
         <Sidebar
           onHomeClick={() => navigate('/dashboard')}
@@ -597,4 +801,4 @@ export default function Messages() {
       </main>
     </div>
   );
-} 
+}
