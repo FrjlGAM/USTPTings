@@ -60,6 +60,10 @@ export default function AdminDashboard() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
+  
+  // Transaction pagination states
+  const [transactionCurrentPage, setTransactionCurrentPage] = useState(1);
+  const transactionItemsPerPage = 8;
 
   // Use real-time sales and earnings data
   const salesEarningsData = useSalesEarnings();
@@ -265,6 +269,12 @@ export default function AdminDashboard() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const currentProducts = products.slice(startIndex, endIndex);
+
+  // Calculate transaction pagination
+  const transactionTotalPages = Math.ceil(recentTransactions.length / transactionItemsPerPage);
+  const transactionStartIndex = (transactionCurrentPage - 1) * transactionItemsPerPage;
+  const transactionEndIndex = transactionStartIndex + transactionItemsPerPage;
+  const currentTransactions = recentTransactions.slice(transactionStartIndex, transactionEndIndex);
 
   const handleBanUser = async (userId: string, name: string) => {
     const reason = window.prompt('Please enter reason for banning this user:');
@@ -502,10 +512,10 @@ export default function AdminDashboard() {
                 <tbody>
                   {loadingTransactions ? (
                     <tr><td colSpan={4} className="text-center py-8">Loading...</td></tr>
-                  ) : recentTransactions.length === 0 ? (
+                  ) : currentTransactions.length === 0 ? (
                     <tr><td colSpan={4} className="text-center py-8 text-gray-400">No transactions found.</td></tr>
                   ) : (
-                    recentTransactions.map((tx) => {
+                    currentTransactions.map((tx) => {
                       return (
                         <tr key={tx.id} className="border-b border-pink-100 last:border-0">
                           <td className="flex items-center gap-3 py-3 px-2">
@@ -515,7 +525,8 @@ export default function AdminDashboard() {
                           <td className="py-3 px-2 font-semibold text-gray-700">{formatCurrency(Number(tx.totalAmount) || 0)}</td>
                           <td className="py-3 px-2 font-semibold text-gray-700">{tx.quantity}</td>
                           <td className="py-3 px-2 text-gray-500">
-                            {tx.createdAt.toDate().toLocaleDateString()}
+                            <div>{tx.createdAt.toDate().toLocaleDateString()}</div>
+                            <div className="text-xs text-gray-400">{tx.createdAt.toDate().toLocaleTimeString()}</div>
                           </td>
                         </tr>
                       );
@@ -524,6 +535,42 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+            
+            {/* Transaction Pagination Controls */}
+            {!loadingTransactions && recentTransactions.length > 0 && (
+              <div className="flex justify-between items-center mt-4 px-4">
+                <div className="text-sm text-gray-600">
+                  Showing {transactionStartIndex + 1} to {Math.min(transactionEndIndex, recentTransactions.length)} of {recentTransactions.length} transactions
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setTransactionCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={transactionCurrentPage === 1}
+                    className={`px-3 py-1 rounded ${
+                      transactionCurrentPage === 1
+                        ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                        : 'bg-[#F88379] text-white hover:bg-[#f76d62]'
+                    }`}
+                  >
+                    Previous
+                  </button>
+                  <span className="px-3 py-1 text-gray-600">
+                    Page {transactionCurrentPage} of {transactionTotalPages}
+                  </span>
+                  <button
+                    onClick={() => setTransactionCurrentPage(prev => Math.min(prev + 1, transactionTotalPages))}
+                    disabled={transactionCurrentPage === transactionTotalPages}
+                    className={`px-3 py-1 rounded ${
+                      transactionCurrentPage === transactionTotalPages
+                        ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                        : 'bg-[#F88379] text-white hover:bg-[#f76d62]'
+                    }`}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
