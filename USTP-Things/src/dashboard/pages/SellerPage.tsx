@@ -14,14 +14,17 @@ import LeftArrow from "../../assets/ustp thingS/LeftArrow.png";
 import addIcon from "../../assets/ustp thingS/Add.png";
 import deleteIcon from "../../assets/ustp thingS/Delete.png";
 import pencilIcon from "../../assets/ustp thingS/Pencil.png";
+// @ts-ignore
 import productUniform from "../../assets/ustp thingS/yummy 2.png"
 import AddProductModal from "../components/AddProductModal";
 import ProductCardSeller from '../components/ProductCardSeller';
 import SellerProductDetail from './SellerProductDetail';
 import SellerName from '../components/SellerName';
 import { auth, db } from "../../lib/firebase";
+// @ts-ignore
 import { doc, getDoc, onSnapshot, collection, query, where, getDocs, updateDoc, increment, arrayUnion, Timestamp, setDoc, addDoc, deleteDoc } from "firebase/firestore";
 
+// @ts-ignore
 interface Seller {
   businessName: string;
   profileImage: string | null;

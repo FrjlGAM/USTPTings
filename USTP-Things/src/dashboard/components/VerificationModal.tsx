@@ -31,6 +31,7 @@ export default function VerificationModal({ open, onClose, setVerificationReques
   const [showEmailVerificationOverlay, setShowEmailVerificationOverlay] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [checkingVerification, setCheckingVerification] = useState(false);
+  // @ts-ignore
   const [emailVerified, setEmailVerified] = useState(false);
   const [canSubmitVerification, setCanSubmitVerification] = useState(false);
 

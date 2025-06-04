@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+// import React, { useState } from "react";
 import ustpLogo from "../../assets/ustp-things-logo.png";
 import closeIcon from "../../assets/ustp thingS/X button.png";
 
@@ -8,12 +8,12 @@ type VerificationCodeEmailModalProps = {
 };
 
 export default function VerificationCodeEmail({ onClose, onCheckVerification }: VerificationCodeEmailModalProps) {
-  const [isSaveHovered, setIsSaveHovered] = useState(false);
+  // const [isSaveHovered, setIsSaveHovered] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onCheckVerification();
-  };
+  // const handleSubmit = (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   onCheckVerification();
+  // };
 
   return (
     <div

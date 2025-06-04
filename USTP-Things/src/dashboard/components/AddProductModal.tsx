@@ -7,10 +7,11 @@ interface AddProductModalProps {
   onClose: () => void;
   onProductAdded?: () => void; // callback to refresh dashboard
 }
+//  remove linter warning
+// const REQUIRED_FIELDS = [  // List of required fields for validation
 
-const REQUIRED_FIELDS = [
-  'productName', 'price', 'stock', 'productImage',
-];
+//   'productName', 'price', 'stock', 'productImage',
+// ];
 
 const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose, onProductAdded }) => {
   const [productImage, setProductImage] = useState<string | null>(null);

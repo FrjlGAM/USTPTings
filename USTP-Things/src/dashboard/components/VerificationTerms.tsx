@@ -1,4 +1,4 @@
-import React from 'react';
+// import React from 'react';
 import logo from '../../assets/ustp-things-logo.png';
 import xButton from '../../assets/ustp thingS/X button.png';
 import { usePreventScroll } from '../../hooks/usePreventScroll';

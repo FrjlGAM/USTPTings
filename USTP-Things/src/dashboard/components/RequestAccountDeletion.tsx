@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import ustpLogo from "../../assets/ustp-things-logo.png";
 import closeIcon from "../../assets/ustp thingS/X button.png";
 import { deleteUser } from "firebase/auth";

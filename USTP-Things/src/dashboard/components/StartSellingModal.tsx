@@ -11,7 +11,8 @@ type Props = {
   onStartSelling: () => void;
 };
 
-const StartSellingModal: React.FC<Props> = ({ open, onClose, onStartSelling }) => {
+// const StartSellingModal: React.FC<Props> = ({ open, onClose, onStartSelling }) => {
+const StartSellingModal: React.FC<Props> = ({ open, onClose }) => {
   const navigate = useNavigate();
 
   const handleStartSelling = async () => {

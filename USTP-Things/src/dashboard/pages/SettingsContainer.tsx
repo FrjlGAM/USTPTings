@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import Settings from "./Settings";
 import AccountandSecurity from "./AccountandSecurity";
 import MyProfile from "./MyProfile";

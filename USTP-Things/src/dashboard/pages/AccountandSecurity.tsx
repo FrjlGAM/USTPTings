@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import homeLogo from "../../assets/ustp thingS/Home.png";
 import Username from "../components/Username"; // adjust the path if needed
@@ -27,6 +27,7 @@ export default function AccountandSecurity({ onSettingsClick, onMyProfileClick }
   const [showVerificationCodeModal, setShowVerificationCodeModal] = useState(false);
   const [showSecurityCheckModal, setShowSecurityCheckModal] = useState(false);
   const [email, setEmail] = useState("N/A");
+  // @ts-ignore
   const [verificationCode, setVerificationCode] = useState("");
 
   useEffect(() => {
@@ -94,7 +95,7 @@ export default function AccountandSecurity({ onSettingsClick, onMyProfileClick }
       alert(error.message);
     }
   };
-
+  // @ts-ignore
   const handleSaveVerificationCode = (code: string) => {
     setVerificationCode(code);
     setShowVerificationCodeModal(false);
