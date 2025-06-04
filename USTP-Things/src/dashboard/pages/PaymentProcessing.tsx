@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { auth, db } from '../../lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { createPayment } from '../../lib/xenditPayment';
+import { createTransactionRecord } from '../../lib/transactionService';
 import type { PaymentRequest } from '../../lib/xenditPayment';
 import ustpLogo from '../../assets/ustp-things-logo.png';
 
@@ -38,7 +39,29 @@ export default function PaymentProcessing() {
             paymentStatus: 'completed'
           };
           
-          await addDoc(collection(db, 'orders'), orderDoc);
+          const orderDocRef = await addDoc(collection(db, 'orders'), orderDoc);
+
+          // Create transaction record for admin dashboard
+          try {
+            await createTransactionRecord({
+              orderId: orderDocRef.id,
+              buyerId: orderData.userId,
+              sellerId: orderData.sellerId,
+              productId: orderData.productId,
+              productName: orderData.productName,
+              productImage: orderData.productImage,
+              quantity: orderData.quantity,
+              subtotal: orderData.subtotal || orderData.totalAmount,
+              serviceFeeAmount: orderData.serviceFeeAmount || 0,
+              serviceFeeRate: orderData.serviceFeeRate || 0,
+              totalAmount: orderData.totalAmount,
+              paymentMethod: orderData.paymentMethod
+            });
+          } catch (transactionError) {
+            console.error('Error creating transaction record:', transactionError);
+            // Don't fail the order creation if transaction record fails
+          }
+
           navigate('/dashboard/payment/success', { 
             state: { 
               orderData,

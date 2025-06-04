@@ -3,25 +3,8 @@ import { auth, db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import Logo from '../../landing/components/Logo';
 import userAvatar from '../../assets/ustp thingS/Person.png';
-import { collection, getDocs, deleteDoc, doc, setDoc, query, orderBy, limit, getDoc, Timestamp } from 'firebase/firestore';
-
-type Transaction = {
-  id: string;
-  name: string;
-  price: number;
-  quantity: number;
-  image?: string;
-  createdAt: Timestamp;
-};
-
-type TransactionData = {
-  id: string;
-  name: string;
-  price: number;
-  quantity: number;
-  image?: string;
-  createdAt: Timestamp;
-};
+import { collection, getDocs, deleteDoc, doc, setDoc, query, orderBy, getDoc, Timestamp } from 'firebase/firestore';
+import { useSalesEarnings, useRecentTransactions } from '../../hooks/useSalesEarnings';
 
 type Product = {
   id: string;
@@ -78,17 +61,13 @@ export default function AdminDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
 
-  // Dashboard real data states
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [totalSales, setTotalSales] = useState(0);
+  // Use real-time sales and earnings data
+  const salesEarningsData = useSalesEarnings();
+  // Fetch all transactions by not passing a limit to useRecentTransactions
+  const { transactions: recentTransactions, loading: loadingTransactions } = useRecentTransactions();
+
+  // Legacy states for user count (still needed)
   const [totalUsers, setTotalUsers] = useState(0);
-  const [earnings, setEarnings] = useState({
-    total: 0,
-    revenue: 0,
-    week: 0,
-    month: 0,
-  });
-  const [loadingDashboard, setLoadingDashboard] = useState(false);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -107,7 +86,7 @@ export default function AdminDashboard() {
       fetchVerifiedAccounts();
     }
     if (tab === 'dashboard') {
-      fetchDashboardData();
+      fetchTotalUsers();
     }
     if (tab === 'products') {
       fetchAllProducts();
@@ -201,57 +180,14 @@ export default function AdminDashboard() {
     setLoadingVerified(false);
   };
 
-  const fetchDashboardData = async () => {
-    setLoadingDashboard(true);
-    // Fetch transactions
-    const txQuery = query(collection(db, 'transactions'), orderBy('createdAt', 'desc'), limit(10));
-    const txSnapshot = await getDocs(txQuery);
-    const txData = txSnapshot.docs
-      .map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          name: data.name,
-          price: data.price,
-          quantity: data.quantity,
-          image: data.image || undefined,
-          createdAt: data.createdAt
-        } as TransactionData;
-      })
-      .filter((tx): tx is Transaction => {
-        return (
-          typeof tx.name === 'string' &&
-          typeof tx.price !== 'undefined' &&
-          typeof tx.quantity !== 'undefined' &&
-          tx.createdAt instanceof Timestamp
-        );
-      });
-    setTransactions(txData);
-
-    // Calculate total sales and earnings
-    let total = 0;
-    let week = 0;
-    let month = 0;
-    const now = new Date();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    txData.forEach(tx => {
-      const price = Number(tx.price) || 0;
-      const quantity = Number(tx.quantity) || 1;
-      const createdAt = tx.createdAt.toDate();
-      const sale = price * quantity;
-      total += sale;
-      if (createdAt.getTime() >= startOfWeek.getTime()) week += sale;
-      if (createdAt.getTime() >= startOfMonth.getTime()) month += sale;
-    });
-    setTotalSales(total);
-    setEarnings({ total, revenue: total, week, month });
-
-    // Fetch total users
-    const usersSnapshot = await getDocs(collection(db, 'verifiedAccounts'));
-    setTotalUsers(usersSnapshot.size);
-    setLoadingDashboard(false);
+  // Fetch total users count for dashboard
+  const fetchTotalUsers = async () => {
+    try {
+      const usersSnapshot = await getDocs(collection(db, 'verifiedAccounts'));
+      setTotalUsers(usersSnapshot.size);
+    } catch (error) {
+      console.error('Error fetching total users:', error);
+    }
   };
 
   const handleLogout = async () => {
@@ -291,7 +227,7 @@ export default function AdminDashboard() {
       
       setVerifications(v => v.filter(item => item.id !== id));
       if (tab === 'verified') fetchVerifiedAccounts();
-      if (tab === 'dashboard') fetchDashboardData();
+      if (tab === 'dashboard') fetchTotalUsers();
     } catch (error) {
       console.error('Error confirming verification:', error);
       alert('Failed to confirm verification. Please try again.');
@@ -503,7 +439,9 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-white rounded-xl border-2 border-pink-100 p-6 flex flex-col items-start">
               <span className="text-gray-500 font-medium mb-1">Total Sales</span>
-              <span className="text-2xl font-bold text-gray-700">₱{totalSales.toLocaleString()}</span>
+              <span className="text-2xl font-bold text-gray-700">
+                {salesEarningsData.loading ? 'Loading...' : `₱${salesEarningsData.totalSales.toLocaleString()}`}
+              </span>
             </div>
             <div className="bg-white rounded-xl border-2 p-6 flex flex-col items-start" style={{borderColor: '#F88379'}}>
               <span className="text-gray-500 font-medium mb-1">Total Users</span>
@@ -514,19 +452,27 @@ export default function AdminDashboard() {
               <div className="flex flex-wrap gap-6 mt-2">
                 <div>
                   <div className="text-xs text-gray-500">Total Earnings</div>
-                  <div className="font-bold text-lg text-gray-700">₱{earnings.total.toLocaleString()}</div>
+                  <div className="font-bold text-lg text-gray-700">
+                    {salesEarningsData.loading ? 'Loading...' : `₱${salesEarningsData.totalEarnings.toLocaleString()}`}
+                  </div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">Total Revenue</div>
-                  <div className="font-bold text-lg text-gray-700">₱{earnings.revenue.toLocaleString()}</div>
+                  <div className="font-bold text-lg text-gray-700">
+                    {salesEarningsData.loading ? 'Loading...' : `₱${salesEarningsData.totalSales.toLocaleString()}`}
+                  </div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">This Week</div>
-                  <div className="font-bold text-lg text-gray-700">₱{earnings.week.toLocaleString()}</div>
+                  <div className="font-bold text-lg text-gray-700">
+                    {salesEarningsData.loading ? 'Loading...' : `₱${salesEarningsData.weeklySales.toLocaleString()}`}
+                  </div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">This Month</div>
-                  <div className="font-bold text-lg text-gray-700">₱{earnings.month.toLocaleString()}</div>
+                  <div className="font-bold text-lg text-gray-700">
+                    {salesEarningsData.loading ? 'Loading...' : `₱${salesEarningsData.monthlySales.toLocaleString()}`}
+                  </div>
                 </div>
               </div>
             </div>
@@ -546,19 +492,19 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {loadingDashboard ? (
+                  {loadingTransactions ? (
                     <tr><td colSpan={4} className="text-center py-8">Loading...</td></tr>
-                  ) : transactions.length === 0 ? (
+                  ) : recentTransactions.length === 0 ? (
                     <tr><td colSpan={4} className="text-center py-8 text-gray-400">No transactions found.</td></tr>
                   ) : (
-                    transactions.map((tx) => {
+                    recentTransactions.map((tx) => {
                       return (
                         <tr key={tx.id} className="border-b border-pink-100 last:border-0">
                           <td className="flex items-center gap-3 py-3 px-2">
-                            <img src={tx.image || userAvatar} alt="Product" className="w-10 h-10 rounded-full border border-pink-200" />
-                            <span className="text-gray-700">{tx.name}</span>
+                            <img src={tx.productImage || userAvatar} alt="Product" className="w-10 h-10 rounded-full border border-pink-200" />
+                            <span className="text-gray-700">{tx.productName}</span>
                           </td>
-                          <td className="py-3 px-2 font-semibold text-gray-700">₱{Number(tx.price).toLocaleString()}</td>
+                          <td className="py-3 px-2 font-semibold text-gray-700">₱{Number(tx.totalAmount).toLocaleString()}</td>
                           <td className="py-3 px-2 font-semibold text-gray-700">{tx.quantity}</td>
                           <td className="py-3 px-2 text-gray-500">
                             {tx.createdAt.toDate().toLocaleDateString()}
@@ -721,4 +667,4 @@ export default function AdminDashboard() {
       )}
     </div>
   );
-} 
+}

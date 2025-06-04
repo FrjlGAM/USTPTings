@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../../lib/firebase';
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { checkPaymentStatus } from '../../lib/xenditPayment';
+import { createTransactionRecord } from '../../lib/transactionService';
 import ustpLogo from '../../assets/ustp-things-logo.png';
 
 export default function PaymentCallback() {
@@ -30,6 +31,21 @@ export default function PaymentCallback() {
         }
 
         const orderData = JSON.parse(storedOrderData);
+        
+        // Check if this callback has already been processed by checking sessionStorage flag
+        const processedKey = `processed_${orderData.externalID}`;
+        if (sessionStorage.getItem(processedKey)) {
+          console.log('Payment callback already processed for:', orderData.externalID);
+          // Clear processing flag and redirect to success
+          setProcessing(false);
+          navigate('/dashboard/payment/success', {
+            state: {
+              orderData,
+              paymentMethod: orderData.paymentMethod
+            }
+          });
+          return;
+        }
         
         // Get payment status from URL parameters
         const status = searchParams.get('status');
@@ -95,8 +111,35 @@ export default function PaymentCallback() {
           if (!existingOrderSnapshot.empty) {
             console.log('Order already exists for externalID:', orderData.externalID);
             
-            // Order already exists, redirect to success page with existing order data
-            const existingOrder = existingOrderSnapshot.docs[0].data();
+            // Order already exists, check if transaction exists and create if needed
+            const existingOrder = existingOrderSnapshot.docs[0];
+            const existingOrderData = existingOrder.data();
+            
+            try {
+              // Ensure transaction record exists for this order
+              await createTransactionRecord({
+                orderId: existingOrder.id,
+                buyerId: orderData.userId,
+                sellerId: orderData.sellerId,
+                productId: orderData.productId,
+                productName: orderData.productName,
+                productImage: orderData.productImage,
+                quantity: orderData.quantity,
+                subtotal: orderData.subtotal || orderData.totalAmount,
+                serviceFeeAmount: orderData.serviceFeeAmount || 0,
+                serviceFeeRate: orderData.serviceFeeRate || 0,
+                totalAmount: orderData.totalAmount,
+                paymentMethod: orderData.paymentMethod,
+                paymentId: paymentId || orderData.externalID
+              });
+            } catch (transactionError) {
+              console.error('Error ensuring transaction record exists:', transactionError);
+              // Don't fail if transaction already exists
+            }
+            
+            // Mark as processed to prevent duplicates
+            const processedKey = `processed_${orderData.externalID}`;
+            sessionStorage.setItem(processedKey, 'true');
             
             // Clear session storage
             sessionStorage.removeItem('pendingOrderData');
@@ -104,7 +147,7 @@ export default function PaymentCallback() {
             // Redirect to success page
             navigate('/dashboard/payment/success', {
               state: {
-                orderData: existingOrder,
+                orderData: existingOrderData,
                 paymentMethod: orderData.paymentMethod,
                 paymentId: paymentId
               }
@@ -132,7 +175,33 @@ export default function PaymentCallback() {
             externalID: orderData.externalID
           };
 
-          await addDoc(collection(db, 'orders'), orderDoc);
+          const orderDocRef = await addDoc(collection(db, 'orders'), orderDoc);
+
+          // Create transaction record for admin dashboard
+          try {
+            await createTransactionRecord({
+              orderId: orderDocRef.id,
+              buyerId: orderData.userId,
+              sellerId: orderData.sellerId,
+              productId: orderData.productId,
+              productName: orderData.productName,
+              productImage: orderData.productImage,
+              quantity: orderData.quantity,
+              subtotal: orderData.subtotal || orderData.totalAmount,
+              serviceFeeAmount: orderData.serviceFeeAmount || 0,
+              serviceFeeRate: orderData.serviceFeeRate || 0,
+              totalAmount: orderData.totalAmount,
+              paymentMethod: orderData.paymentMethod,
+              paymentId: paymentId || orderData.externalID
+            });
+          } catch (transactionError) {
+            console.error('Error creating transaction record:', transactionError);
+            // Don't fail the order creation if transaction record fails
+          }
+
+          // Mark as processed to prevent duplicates
+          const processedKey = `processed_${orderData.externalID}`;
+          sessionStorage.setItem(processedKey, 'true');
 
           // Clear session storage
           sessionStorage.removeItem('pendingOrderData');
